@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Smart Transit AI — Panama MiBus</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080c14;--surface:#0d1421;--surface2:#111d2e;--surface3:#162033;
+  --border:#1c2d42;--border2:#243650;
+  --accent:#00c8ff;--accent-dim:#0a4a5e;
+  --green:#00e676;--green-dim:#003520;
+  --yellow:#ffb300;--yellow-dim:#3d2b00;
+  --red:#ff3d57;--red-dim:#3d0010;
+  --purple:#c77dff;--purple-dim:#2d1045;
+  --orange:#ff7043;--orange-dim:#3d1a00;
+  --text:#e8f0fe;--text2:#8da4c0;--text3:#4d6680;
+  --mono:'IBM Plex Mono',monospace;
+  --sans:'Inter',sans-serif;
+  --header:52px;
+}
+html,body{height:100%;font-family:var(--sans);background:var(--bg);color:var(--text);overflow:hidden}
+
+/* ── SCAN LINE overlay ── */
+body::after{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,200,255,.012) 2px,rgba(0,200,255,.012) 4px);
+}
+
+/* ══ HEADER ══════════════════════════════════════════ */
+#header{
+  height:var(--header);display:flex;align-items:center;justify-content:space-between;
+  padding:0 1.25rem;background:var(--surface);
+  border-bottom:1px solid var(--border);
+  position:relative;z-index:100;
+}
+.h-logo{display:flex;align-items:center;gap:.6rem}
+.h-logo-icon{
+  width:32px;height:32px;border-radius:7px;
+  background:linear-gradient(135deg,#00c8ff,#0077b6);
+  display:flex;align-items:center;justify-content:center;font-size:1rem;
+}
+.h-logo-text{font-family:var(--mono);font-size:.78rem;font-weight:600;color:var(--accent);letter-spacing:.06em}
+.h-logo-sub{font-size:.6rem;color:var(--text3);letter-spacing:.04em}
+.h-center{display:flex;gap:1.5rem;align-items:center}
+.h-kpi{text-align:center}
+.h-kpi-val{font-family:var(--mono);font-size:1rem;font-weight:600}
+.h-kpi-lab{font-size:.6rem;color:var(--text3);letter-spacing:.06em;text-transform:uppercase}
+.h-kpi-val.green{color:var(--green)}
+.h-kpi-val.yellow{color:var(--yellow)}
+.h-kpi-val.accent{color:var(--accent)}
+.h-kpi-val.red{color:var(--red)}
+.h-sep{width:1px;height:28px;background:var(--border2)}
+.h-right{display:flex;align-items:center;gap:.75rem}
+.sys-status{
+  display:flex;align-items:center;gap:.45rem;padding:.3rem .75rem;
+  border-radius:20px;border:1px solid var(--green);background:var(--green-dim);
+  font-family:var(--mono);font-size:.65rem;color:var(--green);font-weight:600;
+}
+.sys-dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:blink 1.4s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+#clock{font-family:var(--mono);font-size:.75rem;color:var(--text2)}
+
+/* ══ PRE-LOBBY SELECTOR ══════════════════════════════════════════ */
+#pre-lobby{
+  position:fixed;inset:0;background:rgba(8,12,20,0.96);z-index:2000;
+  display:flex;align-items:center;justify-content:center;
+  backdrop-filter:blur(12px);
+}
+.lobby-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:16px;
+  width:460px;padding:2rem 1.75rem;box-shadow:0 20px 60px rgba(0,0,0,0.6);
+}
+.lobby-title{
+  font-family:var(--mono);font-size:1.1rem;color:var(--accent);margin-bottom:1.5rem;
+  text-align:center;letter-spacing:.05em;
+}
+.lobby-inputs{display:flex;flex-direction:column;gap:1.2rem;margin-bottom:1.8rem}
+.select-group label{
+  font-family:var(--mono);font-size:.68rem;color:var(--text3);letter-spacing:.08em;margin-bottom:.35rem;display:block;
+}
+.lobby-select{
+  background:var(--surface2);border:1px solid var(--border2);border-radius:8px;
+  padding:.75rem 1rem;color:var(--text);font-size:.95rem;width:100%;cursor:pointer;
+}
+.lobby-select:focus{outline:none;border-color:var(--accent)}
+
+.lobby-btn{
+  background:var(--accent);color:#000;font-weight:600;padding:.9rem;
+  border:none;border-radius:8px;cursor:pointer;font-size:1rem;transition:all .2s;
+  width:100%;
+}
+.lobby-btn:hover{background:#00e0ff}
+.lobby-btn:disabled{background:#243650;color:var(--text3);cursor:not-allowed}
+
+/* ══ VENTANA FLOTANTE DE RESULTADO (sobre el mapa) ══════════════════════════════════════════ */
+#result-float{
+  position:absolute;top:80px;left:50%;transform:translateX(-50%);
+  background:var(--surface);border:2px solid var(--accent);border-radius:14px;
+  width:380px;padding:1.25rem;z-index:1500;box-shadow:0 15px 40px rgba(0,200,255,0.3);
+  display:none;
+  max-height:85vh;overflow-y:auto;
+}
+.float-header{
+  display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;
+  font-family:var(--mono);color:var(--accent);
+}
+.float-close{
+  background:none;border:none;font-size:1.4rem;color:var(--text3);cursor:pointer;
+}
+.float-close:hover{color:var(--red)}
+.float-content{font-size:0.9rem;line-height:1.5}
+.result-ok {border-left:5px solid var(--green);}
+.result-warn {border-left:5px solid var(--yellow);}
+.result-crit {border-left:5px solid var(--red);}
+
+/* ══ LAYOUT ══════════════════════════════════════════ */
+#app{display:flex;height:calc(100vh - var(--header));display:none}
+
+#left{
+  width:260px;min-width:260px;
+  background:var(--surface);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;overflow-y:auto;
+}
+.panel-title{
+  font-family:var(--mono);font-size:.62rem;font-weight:600;
+  color:var(--text3);letter-spacing:.1em;text-transform:uppercase;
+  padding:.9rem 1rem .4rem;border-bottom:1px solid var(--border);
+}
+.route-item{
+  padding:.5rem 1rem;border-bottom:1px solid rgba(28,45,66,.5);
+  cursor:pointer;transition:background .15s;display:flex;align-items:center;gap:.6rem;
+}
+.route-item:hover{background:var(--surface2)}
+.route-item.active{background:var(--accent-dim);border-left:2px solid var(--accent)}
+.ri-badge{
+  font-family:var(--mono);font-size:.6rem;font-weight:600;
+  padding:.15rem .4rem;border-radius:4px;min-width:36px;text-align:center;
+}
+.fam-E{background:#0d3a4a;color:#00c8ff}
+.fam-C{background:#2a1f00;color:#ffb300}
+.fam-S{background:#1a3d00;color:#00e676}
+.fam-T{background:#2d1045;color:#c77dff}
+.fam-M{background:#3d1a00;color:#ff7043}
+.ri-name{font-size:.7rem;color:var(--text2);line-height:1.3;flex:1}
+.ri-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.dot-green{background:var(--green)}
+.dot-yellow{background:var(--yellow)}
+.dot-red{background:var(--red)}
+
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:.5rem;padding:.75rem}
+.stat-card{
+  background:var(--surface2);border:1px solid var(--border);border-radius:8px;
+  padding:.6rem .7rem;
+}
+.sc-val{font-family:var(--mono);font-size:1.1rem;font-weight:600}
+.sc-lab{font-size:.6rem;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-top:.15rem}
+
+.alert-feed{flex:1;overflow-y:auto;padding:.5rem}
+.alert-item{
+  padding:.45rem .6rem;border-radius:6px;margin-bottom:.35rem;
+  font-size:.68rem;line-height:1.4;border-left:2px solid;
+  animation:slideIn .3s ease;
+}
+@keyframes slideIn{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
+.alert-crit{background:var(--red-dim);border-color:var(--red);color:#ffb3bd}
+.alert-warn{background:var(--yellow-dim);border-color:var(--yellow);color:#ffe082}
+.alert-info{background:var(--accent-dim);border-color:var(--accent);color:#80dfff}
+.alert-ok{background:var(--green-dim);border-color:var(--green);color:#a5d6a7}
+.alert-time{font-family:var(--mono);font-size:.58rem;opacity:.6;display:block;margin-top:.2rem}
+
+#center{flex:1;position:relative;overflow:hidden}
+#map{width:100%;height:100%}
+
+.map-overlay{position:absolute;pointer-events:none;z-index:1000}
+#mo-tl{top:.75rem;left:.75rem;display:flex;flex-direction:column;gap:.4rem}
+#mo-tr{top:.75rem;right:.75rem;display:flex;flex-direction:column;align-items:flex-end;gap:.4rem}
+#mo-bl{bottom:.75rem;left:.75rem;display:flex;gap:.4rem;pointer-events:all}
+
+.chip{
+  background:rgba(13,20,33,.92);border:1px solid var(--border2);border-radius:6px;
+  padding:.3rem .65rem;font-family:var(--mono);font-size:.65rem;color:var(--text2);
+  backdrop-filter:blur(8px);pointer-events:all;cursor:pointer;
+  display:flex;align-items:center;gap:.4rem;
+}
+.chip.active{border-color:var(--accent);color:var(--accent)}
+.chip-dot{width:7px;height:7px;border-radius:50%}
+
+#traffic-legend{
+  background:rgba(13,20,33,.92);border:1px solid var(--border2);border-radius:8px;
+  padding:.5rem .75rem;backdrop-filter:blur(8px);
+}
+.leg-row{display:flex;align-items:center;gap:.45rem;font-size:.63rem;color:var(--text2);margin-bottom:.2rem}
+.leg-row:last-child{margin-bottom:0}
+.leg-dot{width:8px;height:8px;border-radius:50%}
+
+#right{
+  width:285px;min-width:285px;
+  background:var(--surface);border-left:1px solid var(--border);
+  display:flex;flex-direction:column;overflow-y:auto;
+}
+
+.pred-section{padding:.5rem .75rem;border-bottom:1px solid var(--border)}
+.pred-card{
+  background:var(--surface2);border:1px solid var(--border);border-radius:10px;
+  padding:.75rem;margin-bottom:.5rem;
+}
+.pc-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.5rem}
+.pc-ruta{font-family:var(--mono);font-size:.75rem;font-weight:600}
+.pc-nombre{font-size:.65rem;color:var(--text3);margin-top:.1rem;line-height:1.3}
+.pc-badge{font-family:var(--mono);font-size:.6rem;padding:.15rem .45rem;border-radius:4px;font-weight:600}
+.badge-ok{background:var(--green-dim);color:var(--green)}
+.badge-warn{background:var(--yellow-dim);color:var(--yellow)}
+.badge-crit{background:var(--red-dim);color:var(--red)}
+.pc-metrics{display:grid;grid-template-columns:1fr 1fr;gap:.4rem;margin-top:.5rem}
+.pc-m{background:var(--surface3);border-radius:6px;padding:.4rem .5rem}
+.pc-m-val{font-family:var(--mono);font-size:.85rem;font-weight:600}
+.pc-m-lab{font-size:.58rem;color:var(--text3);text-transform:uppercase;letter-spacing:.05em}
+.progress-bar{height:3px;background:var(--border2);border-radius:2px;margin-top:.45rem;overflow:hidden}
+.progress-fill{height:100%;border-radius:2px;transition:width .6s ease}
+
+.insight-box{
+  margin:.5rem .75rem;padding:.65rem .75rem;
+  background:linear-gradient(135deg,var(--accent-dim),rgba(0,119,182,.15));
+  border:1px solid rgba(0,200,255,.2);border-radius:10px;
+}
+.ib-title{font-family:var(--mono);font-size:.65rem;color:var(--accent);margin-bottom:.35rem;display:flex;align-items:center;gap:.35rem}
+.ib-text{font-size:.7rem;color:var(--text2);line-height:1.5}
+
+.action-item{
+  padding:.5rem .75rem;border-bottom:1px solid rgba(28,45,66,.4);
+  display:flex;align-items:flex-start;gap:.5rem;
+}
+.ai-prio{
+  font-family:var(--mono);font-size:.55rem;font-weight:600;
+  padding:.15rem .35rem;border-radius:3px;white-space:nowrap;margin-top:.05rem;
+}
+.prio-critica{background:var(--red-dim);color:var(--red)}
+.prio-alta{background:var(--yellow-dim);color:var(--yellow)}
+.prio-media{background:var(--accent-dim);color:var(--accent)}
+.prio-baja{background:var(--surface2);color:var(--text3)}
+.ai-body{}
+.ai-code{font-family:var(--mono);font-size:.58rem;color:var(--text3)}
+.ai-desc{font-size:.7rem;color:var(--text);margin-top:.05rem}
+
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+
+@media(max-width:1100px){#left{width:220px;min-width:220px}#right{width:240px;min-width:240px}}
+@media(max-width:850px){#left,#right{display:none}}
+</style>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+</head>
+<body>
+
+<!-- PRE-LOBBY -->
+<div id="pre-lobby">
+  <div class="lobby-card">
+    <div class="lobby-title">🚍 PLANIFICADOR INTELIGENTE MiBus</div>
+    
+    <div class="lobby-inputs">
+      <div class="select-group">
+        <label>ORIGEN</label>
+        <select id="select-origen" class="lobby-select" onchange="checkSelection()">
+          <option value="">Selecciona origen...</option>
+        </select>
+      </div>
+      
+      <div class="select-group">
+        <label>DESTINO</label>
+        <select id="select-destino" class="lobby-select" onchange="checkSelection()">
+          <option value="">Selecciona destino...</option>
+        </select>
+      </div>
+    </div>
+
+    <button id="plan-btn" onclick="planificarViaje()" class="lobby-btn" disabled>🔍 Buscar Mejor Ruta</button>
+  </div>
+</div>
+
+<div id="header">
+  <div class="h-logo">
+    <div class="h-logo-icon">🚍</div>
+    <div>
+      <div class="h-logo-text">SMART TRANSIT AI</div>
+      <div class="h-logo-sub">MiBus Panama · Centro de Control</div>
+    </div>
+  </div>
+
+  <div class="h-center">
+    <div class="h-kpi"><div class="h-kpi-val accent" id="hk-buses">—</div><div class="h-kpi-lab">Buses Activos</div></div>
+    <div class="h-sep"></div>
+    <div class="h-kpi"><div class="h-kpi-val green" id="hk-pasajeros">—</div><div class="h-kpi-lab">Pasajeros</div></div>
+    <div class="h-sep"></div>
+    <div class="h-kpi"><div class="h-kpi-val yellow" id="hk-trafico">—</div><div class="h-kpi-lab">Tráfico</div></div>
+    <div class="h-sep"></div>
+    <div class="h-kpi"><div class="h-kpi-val red" id="hk-alertas">0</div><div class="h-kpi-lab">Alertas</div></div>
+    <div class="h-sep"></div>
+    <div class="h-kpi"><div class="h-kpi-val green" id="hk-confiab">—</div><div class="h-kpi-lab">Confiabilidad</div></div>
+  </div>
+
+  <div class="h-right">
+    <div class="sys-status"><div class="sys-dot"></div>SISTEMA OPERATIVO</div>
+    <div id="clock"></div>
+  </div>
+</div>
+
+<div id="app">
+
+  <div id="left">
+    <div class="panel-title">📊 Estado del Sistema</div>
+    <div class="stat-grid">
+      <div class="stat-card"><div class="sc-val accent" id="sc-rutas">26</div><div class="sc-lab">Rutas</div></div>
+      <div class="stat-card"><div class="sc-val green" id="sc-normales">—</div><div class="sc-lab">Normales</div></div>
+      <div class="stat-card"><div class="sc-val yellow" id="sc-retrasos">—</div><div class="sc-lab">Retrasos</div></div>
+      <div class="stat-card"><div class="sc-val red" id="sc-criticos">—</div><div class="sc-lab">Críticos</div></div>
+    </div>
+
+    <div class="panel-title">🚌 Rutas MiBus</div>
+    <div id="route-list"></div>
+
+    <div class="panel-title">🔔 Alertas del Sistema</div>
+    <div class="alert-feed" id="alert-feed"></div>
+  </div>
+
+  <div id="center">
+    <div id="map"></div>
+
+    <!-- VENTANA FLOTANTE DE RESULTADO (encima del mapa) -->
+    <div id="result-float">
+      <div class="float-header">
+        <span>📍 Resultado del Viaje</span>
+        <button class="float-close" onclick="minimizarFloat()">✕</button>
+      </div>
+      <div id="float-content" class="float-content"></div>
+    </div>
+
+    <div class="map-overlay" id="mo-tl">
+      <div class="chip active" id="chip-buses" onclick="toggleLayer('buses')">
+        <div class="chip-dot" style="background:var(--accent)"></div>Buses
+      </div>
+      <div class="chip active" id="chip-paradas" onclick="toggleLayer('paradas')">
+        <div class="chip-dot" style="background:var(--yellow)"></div>Paradas
+      </div>
+      <div class="chip active" id="chip-rutas" onclick="toggleLayer('rutas')">
+        <div class="chip-dot" style="background:var(--purple)"></div>Rutas
+      </div>
+      <div class="chip active" id="chip-trafico" onclick="toggleLayer('trafico')">
+        <div class="chip-dot" style="background:var(--red)"></div>Tráfico
+      </div>
+    </div>
+
+    <div class="map-overlay" id="mo-tr">
+      <div id="traffic-legend">
+        <div class="leg-row"><div class="leg-dot" style="background:var(--green)"></div>Tráfico fluido</div>
+        <div class="leg-row"><div class="leg-dot" style="background:var(--yellow)"></div>Tráfico moderado</div>
+        <div class="leg-row"><div class="leg-dot" style="background:var(--red)"></div>Alta congestión</div>
+        <div class="leg-row"><div class="leg-dot" style="background:var(--accent)"></div>Bus en ruta</div>
+        <div class="leg-row"><div class="leg-dot" style="background:var(--yellow)"></div>Parada MiBus</div>
+      </div>
+    </div>
+
+    <div class="map-overlay" id="mo-bl">
+      <div class="chip" onclick="filterFamily('E')">Fam. E</div>
+      <div class="chip" onclick="filterFamily('C')">Fam. C</div>
+      <div class="chip" onclick="filterFamily('S')">Fam. S</div>
+      <div class="chip" onclick="filterFamily('T')">Fam. T</div>
+      <div class="chip" onclick="filterFamily('M')">Fam. M</div>
+      <div class="chip" onclick="filterFamily(null)">Todas</div>
+    </div>
+  </div>
+
+  <div id="right">
+    <div class="panel-title">🧠 Predicciones IA</div>
+
+    <div style="padding:.5rem .75rem .25rem">
+      <div class="insight-box">
+        <div class="ib-title">🤖 Análisis en tiempo real</div>
+        <div class="ib-text" id="ai-insight">Iniciando análisis del sistema MiBus…</div>
+      </div>
+    </div>
+
+    <div class="panel-title">📈 Estado por Ruta</div>
+    <div id="pred-list"></div>
+
+    <div class="panel-title">⚡ Acciones Recomendadas</div>
+    <div id="action-list"></div>
+  </div>
+
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════
+// DATOS REALES MIBUS (sin cambios)
+// ═══════════════════════════════════════════════════════
+const RUTAS_REALES = {
+  "E458":{"nombre":"Metro 24 De Diciembre - Interna","familia":"E","cap":80,"color":"#00c8ff"},
+  "E528":{"nombre":"Metro Mananitas - Parque Real",  "familia":"E","cap":80,"color":"#00c8ff"},
+  "E468":{"nombre":"Metro 24 Dic - Nuevo Tocumen",   "familia":"E","cap":80,"color":"#00c8ff"},
+  "C640":{"nombre":"Cinta Costera - Panama Viejo",   "familia":"C","cap":70,"color":"#ffb300"},
+  "C641":{"nombre":"Albrook - Cincuentenario",       "familia":"C","cap":70,"color":"#ffb300"},
+  "C678":{"nombre":"Cincuentenario - Merca Panama",  "familia":"C","cap":70,"color":"#ffb300"},
+  "C810":{"nombre":"Albrook - Miraflores",           "familia":"C","cap":70,"color":"#ffb300"},
+  "C820":{"nombre":"Ciudad Del Saber - Albrook",     "familia":"C","cap":70,"color":"#ffb300"},
+  "C850":{"nombre":"Metro Albrook - Amador",         "familia":"C","cap":70,"color":"#ffb300"},
+  "S420":{"nombre":"Corredor Sur - Pacora",          "familia":"S","cap":65,"color":"#00e676"},
+  "S440":{"nombre":"Corredor Sur - 24 Dic / 5 Mayo", "familia":"S","cap":65,"color":"#00e676"},
+  "S441":{"nombre":"Corredor Sur - 24 De Diciembre", "familia":"S","cap":65,"color":"#00e676"},
+  "S447":{"nombre":"Costa Del Este - 24 Dic",        "familia":"S","cap":65,"color":"#00e676"},
+  "S480":{"nombre":"Corredor Sur - La Siesta",       "familia":"S","cap":65,"color":"#00e676"},
+  "S520":{"nombre":"Corredor Sur - Albrook",         "familia":"S","cap":65,"color":"#00e676"},
+  "S432":{"nombre":"Corredor Sur - Felipillo",       "familia":"S","cap":65,"color":"#00e676"},
+  "S542":{"nombre":"Corredor Sur - Pedregal",        "familia":"S","cap":65,"color":"#00e676"},
+  "S562":{"nombre":"Corredor Sur - Don Bosco",       "familia":"S","cap":65,"color":"#00e676"},
+  "S569":{"nombre":"Corredor Sur - 5 Mayo",          "familia":"S","cap":65,"color":"#00e676"},
+  "S572":{"nombre":"Versalles - Corredor Sur",       "familia":"S","cap":65,"color":"#00e676"},
+  "S662":{"nombre":"Costa Del Este - Corredor Sur",  "familia":"S","cap":65,"color":"#00e676"},
+  "T100":{"nombre":"Corredor Norte - Albrook",       "familia":"T","cap":65,"color":"#c77dff"},
+  "T120":{"nombre":"Corredor Norte - Mano de Piedra","familia":"T","cap":65,"color":"#c77dff"},
+  "T176":{"nombre":"24 Diciembre - Corredor Norte",  "familia":"T","cap":65,"color":"#c77dff"},
+  "T536":{"nombre":"Corredor Norte - Pedregal",      "familia":"T","cap":65,"color":"#c77dff"},
+  "M675":{"nombre":"Tumba Muerto - Paitilla",        "familia":"M","cap":55,"color":"#ff7043"},
+};
+
+const PARADAS_REALES = [
+  {id:"p1", nombre:"Metro 24 De Diciembre",   lat:9.0217, lng:-79.5283},
+  {id:"p2", nombre:"24 De Diciembre",          lat:9.0155, lng:-79.5195},
+  {id:"p3", nombre:"La Casa Del Zinc",         lat:9.0100, lng:-79.5130},
+  {id:"p4", nombre:"Las Paredes",              lat:9.0058, lng:-79.5012},
+  {id:"p5", nombre:"Albrook - Bahia H",        lat:8.9933, lng:-79.5472},
+  {id:"p6", nombre:"Paitilla",                 lat:8.9832, lng:-79.5078},
+  {id:"p7", nombre:"Banco General",            lat:8.9779, lng:-79.5121},
+  {id:"p8", nombre:"Parque Pacora",            lat:9.0638, lng:-79.4003},
+  {id:"p9", nombre:"Felipillo",                lat:9.0299, lng:-79.4458},
+  {id:"p10",nombre:"Albrook - Bahia F",        lat:8.9940, lng:-79.5465},
+  {id:"p11",nombre:"Costa Azul",               lat:9.0489, lng:-79.4521},
+  {id:"p12",nombre:"Mano De Piedra",           lat:9.1028, lng:-79.4225},
+  {id:"p13",nombre:"Albrook - Bahia G",        lat:8.9936, lng:-79.5468},
+  {id:"p14",nombre:"Metro Cincuentenario",     lat:9.0132, lng:-79.5058},
+  {id:"p15",nombre:"Estacion Maranon",         lat:8.9945, lng:-79.5360},
+  {id:"p16",nombre:"Metro Corredor Sur",       lat:8.9850, lng:-79.5150},
+  {id:"p17",nombre:"Metro Albrook",            lat:8.9928, lng:-79.5480},
+  {id:"p18",nombre:"Parque Real",              lat:9.0612, lng:-79.4053},
+  {id:"p19",nombre:"Zp Santa Librada",         lat:9.0820, lng:-79.4122},
+];
+
+// Variables globales (sin cambios)
+let map;
+const busMarkers = {};
+const paraMarkers = {};
+const polylines = [];
+const trafficCircles = [];
+let layers = {buses:true,paradas:true,rutas:true,trafico:true};
+let activeFamily = null;
+const BUS_FLEET = {};
+const RUTA_KEYS = Object.keys(RUTAS_REALES);
+
+RUTA_KEYS.forEach((ruta,i)=>{
+  const info = RUTAS_REALES[ruta];
+  const tPt = PARADAS_REALES[Math.floor(Math.random()*PARADAS_REALES.length)];
+  const bLat = tPt.lat + (Math.random()-.5)*0.015;
+  const bLng = tPt.lng + (Math.random()-.5)*0.015;
+  BUS_FLEET[`bus_${i}`]={
+    id:`bus_${i}`, ruta, familia:info.familia, cap:info.cap,
+    lat:bLat, lng:bLng,
+    pasajeros:Math.floor(Math.random()*info.cap),
+    velocidad:20+Math.random()*35,
+    densidad:Math.random(),
+    tEst:15+Math.random()*25,
+    tReal:0,
+    dLat:(Math.random()-.5)*0.0004,
+    dLng:(Math.random()-.5)*0.0004,
+    incidente:Math.random()<0.04,
+    tipoInc:["accidente","avería","bloqueo"][Math.floor(Math.random()*3)],
+    marker:null,
+  };
+  BUS_FLEET[`bus_${i}`].tReal = BUS_FLEET[`bus_${i}`].tEst*(1+(Math.random()-.3)*.4);
+});
+
+const famColor={"E":"#00c8ff","C":"#ffb300","S":"#00e676","T":"#c77dff","M":"#ff7043"};
+const nivelColor={alto:"#ff3d57",moderado:"#ffb300",bajo:"#00e676"};
+
+// ═══════════════════════════════════════════════════════
+// NUEVO: SELECTORES + VENTANA FLOTANTE
+// ═══════════════════════════════════════════════════════
+function populateSelectors() {
+  const origenSelect = document.getElementById('select-origen');
+  const destinoSelect = document.getElementById('select-destino');
+  
+  PARADAS_REALES.forEach(p => {
+    const opt1 = document.createElement('option');
+    opt1.value = p.nombre;
+    opt1.textContent = p.nombre;
+    origenSelect.appendChild(opt1);
+    
+    const opt2 = document.createElement('option');
+    opt2.value = p.nombre;
+    opt2.textContent = p.nombre;
+    destinoSelect.appendChild(opt2);
+  });
+}
+
+function checkSelection() {
+  const origen = document.getElementById('select-origen').value;
+  const destino = document.getElementById('select-destino').value;
+  document.getElementById('plan-btn').disabled = !(origen && destino && origen !== destino);
+}
+
+function planificarViaje() {
+  const origen = document.getElementById('select-origen').value;
+  const destino = document.getElementById('select-destino').value;
+  
+  if (!origen || !destino || origen === destino) return;
+
+  // Calcular congestión actual
+  const traficoActual = Object.values(BUS_FLEET).reduce((sum, b) => sum + b.densidad, 0) / Object.keys(BUS_FLEET).length;
+  const congestion = traficoActual > 0.78 ? "ALTO" : traficoActual > 0.55 ? "MODERADO" : "FLUIDO";
+
+  let mejorRuta = "S520 / C820";
+  let tiempo = "18-26 min";
+  let mensaje = "";
+  let clase = "result-ok";
+
+  if ((origen.includes("Albrook") && destino.includes("24")) || (destino.includes("Albrook") && origen.includes("24"))) {
+    mejorRuta = "E458 o S441";
+    if (congestion === "ALTO") {
+      mensaje = "Esta ruta está muy congestionada en la zona de Albrook y 24 de Diciembre. Se recomienda esperar o buscar alternativa.";
+      clase = "result-crit";
+      tiempo = "35-50 min";
+    } else {
+      mensaje = "Ruta directa y recomendada.";
+    }
+  } 
+  else if (destino.includes("Pacora") || origen.includes("Pacora")) {
+    mejorRuta = "S420";
+    tiempo = congestion === "ALTO" ? "38-55 min" : "24-32 min";
+    mensaje = congestion === "ALTO" ? "Corredor Sur presenta alta congestión. Evita esta hora si es posible." : "Buena opción directa.";
+  } 
+  else if (destino.includes("Paitilla") || origen.includes("Paitilla")) {
+    mejorRuta = "M675 o C640";
+    if (traficoActual > 0.82) {
+      mensaje = "Zona de Paitilla extremadamente congestionada en este momento. No se recomienda tomar esta ruta ahora.";
+      clase = "result-crit";
+    } else {
+      mensaje = "Ruta viable con buena frecuencia.";
+    }
+  } 
+  else {
+    mensaje = `Tráfico actual: ${congestion}. La mejor conexión disponible es ${mejorRuta}.`;
+  }
+
+  // Mostrar resultado en ventana flotante encima del mapa
+  const float = document.getElementById('result-float');
+  const content = document.getElementById('float-content');
+  
+  content.innerHTML = `
+    <div class="${clase}" style="padding:12px;border-radius:8px;background:rgba(255,255,255,0.05);">
+      <strong>Origen:</strong> ${origen}<br>
+      <strong>Destino:</strong> ${destino}<br><br>
+      <strong>Ruta recomendada:</strong> <span style="color:var(--green)">${mejorRuta}</span><br>
+      <strong>Tiempo estimado:</strong> ${tiempo}<br><br>
+      <div style="margin-top:8px">${mensaje}</div>
+    </div>
+    <div style="margin-top:15px;text-align:center;font-size:0.8rem;color:var(--text3)">
+      Puedes minimizar esta ventana en cualquier momento
+    </div>
+  `;
+
+  float.style.display = 'block';
+
+  // Cerrar lobby y abrir centro de control
+  document.getElementById('pre-lobby').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  
+  // Iniciar mapa solo ahora
+  if (!map) initMap();
+}
+
+function minimizarFloat() {
+  document.getElementById('result-float').style.display = 'none';
+}
+
+// ═══════════════════════════════════════════════════════
+// RESTO DEL CÓDIGO ORIGINAL (sin modificaciones)
+// ═══════════════════════════════════════════════════════
+function initMap(){
+  map = L.map('map',{zoomControl:false,attributionControl:false}).setView([9.01,-79.52],12);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+
+  drawPolylines();
+  drawTrafficZones();
+  drawParadaMarkers();
+  drawBusMarkers();
+  buildRouteList();
+  buildPredList();
+
+  setInterval(updateBuses,      2000);
+  setInterval(updateMetrics,    3000);
+  setInterval(updatePredList,   5000);
+  setInterval(generateAlert,    7000);
+  setInterval(updateTraffic,   15000);
+  setInterval(buildActionList,  9000);
+  setInterval(updateInsight,   12000);
+
+  updateMetrics();
+  updateClock();
+  setInterval(updateClock,1000);
+}
+
+function drawPolylines(){
+  const RUTAS_POLYLINES = {
+    "S_corridor":{color:"#00e676",points:[[9.0638,-79.4003],[9.0299,-79.4458],[8.9945,-79.5360],[8.9940,-79.5465],[8.9832,-79.5078]]},
+    "T_corridor":{color:"#c77dff",points:[[9.1028,-79.4225],[9.0820,-79.4122],[9.0217,-79.5283],[9.0132,-79.5058],[8.9936,-79.5468]]},
+    "C_loop":{color:"#ffb300",points:[[8.9933,-79.5472],[8.9928,-79.5480],[8.9832,-79.5078],[8.9779,-79.5121],[8.9945,-79.5360],[8.9933,-79.5472]]},
+    "E458_route":{color:"#00c8ff",points:[[9.0217,-79.5283],[9.0155,-79.5195],[9.0100,-79.5130],[9.0058,-79.5012]]},
+    "M675_route":{color:"#ff7043",points:[[9.0132,-79.5058],[9.0000,-79.5150],[8.9832,-79.5078]]},
+  };
+  Object.entries(RUTAS_POLYLINES).forEach(([k,r])=>{
+    const pl = L.polyline(r.points,{color:r.color,opacity:.55,weight:3});
+    if(layers.rutas) pl.addTo(map);
+    polylines.push(pl);
+  });
+}
+
+function drawTrafficZones(){
+  const ZONAS_TRAFICO = [
+    {lat:8.9933,lng:-79.5472,radio:600,nivel:"alto",label:"Albrook"},
+    {lat:9.0217,lng:-79.5283,radio:500,nivel:"alto",label:"24 Diciembre"},
+    {lat:8.9832,lng:-79.5078,radio:400,nivel:"moderado",label:"Paitilla"},
+    {lat:9.0132,lng:-79.5058,radio:450,nivel:"alto",label:"Cincuentenario"},
+    {lat:8.9945,lng:-79.5360,radio:350,nivel:"moderado",label:"Maranon"},
+    {lat:9.0638,lng:-79.4003,radio:300,nivel:"bajo",label:"Pacora"},
+    {lat:9.1028,lng:-79.4225,radio:300,nivel:"bajo",label:"Mano de Piedra"},
+    {lat:9.0489,lng:-79.4521,radio:250,nivel:"moderado",label:"Costa Azul"},
+  ];
+  ZONAS_TRAFICO.forEach(z=>{
+    const c=L.circle([z.lat,z.lng],{radius:z.radio,fillColor:nivelColor[z.nivel],fillOpacity:.13,color:nivelColor[z.nivel],opacity:.35,weight:1.5});
+    if(layers.trafico) c.addTo(map);
+    trafficCircles.push({circle:c,zone:z});
+  });
+}
+
+function updateTraffic(){
+  trafficCircles.forEach(({circle,zone})=>{
+    const niveles=["alto","moderado","bajo"];
+    const pesos=zone.nivel==="alto"?[.6,.3,.1]:zone.nivel==="moderado"?[.25,.55,.2]:[.1,.3,.6];
+    let r=Math.random(),acum=0,nuevoNivel="bajo";
+    for(let i=0;i<3;i++){acum+=pesos[i];if(r<acum){nuevoNivel=niveles[i];break;}}
+    zone.nivel=nuevoNivel;
+    const col=nivelColor[nuevoNivel];
+    circle.setStyle({fillColor:col,color:col});
+  });
+}
+
+function paradaIcon(){
+  return L.divIcon({html:`<svg width="20" height="20"><circle cx="10" cy="10" r="7" fill="#ffb300" fill-opacity=".2" stroke="#ffb300" stroke-width="1.5"/><circle cx="10" cy="10" r="3.5" fill="#ffb300"/></svg>`,className:'',iconSize:[20,20],iconAnchor:[10,10]});
+}
+
+function drawParadaMarkers(){
+  PARADAS_REALES.forEach(p=>{
+    const m=L.marker([p.lat,p.lng],{icon:paradaIcon()});
+    m.bindPopup(`<div style="font-family:'IBM Plex Mono',monospace;background:#0d1421;color:#e8f0fe;padding:.75rem;border-radius:8px;min-width:180px;font-size:.72rem"><div style="color:#ffb300;font-weight:600;margin-bottom:.4rem">📍 ${p.nombre}</div><div style="color:#8da4c0;margin-bottom:.3rem">Rutas que pasan:</div>${Object.keys(RUTAS_REALES).filter(r=>Math.random()>0.6).slice(0,3).map(r=>`<span style="background:#243650;color:#00c8ff;padding:.1rem .35rem;border-radius:4px;margin-right:.2rem;font-size:.65rem">${r}</span>`).join('')}</div>`,{className:'custom-pop'});
+    if(layers.paradas) m.addTo(map);
+    paraMarkers[p.id]=m;
+  });
+}
+
+function busIcon(familia,pct,incidente){
+  const col=incidente?"#ff3d57":famColor[familia]||"#00c8ff";
+  const bg=incidente?"#3d0010":"#080c14";
+  const ocu=Math.round(pct);
+  return L.divIcon({html:`<svg width="38" height="38"><circle cx="19" cy="19" r="17" fill="${bg}" stroke="${col}" stroke-width="2" opacity=".9"/><text x="19" y="14" text-anchor="middle" font-size="12" fill="${col}">🚌</text><text x="19" y="27" text-anchor="middle" font-family="monospace" font-size="8" font-weight="bold" fill="${col}">${ocu}%</text>${incidente?`<circle cx="30" cy="8" r="5" fill="#ff3d57"/><text x="30" y="11.5" text-anchor="middle" font-size="7" fill="white">!</text>`:''}</svg>`,className:'',iconSize:[38,38],iconAnchor:[19,19]});
+}
+
+function drawBusMarkers(){
+  Object.values(BUS_FLEET).forEach(bus=>{
+    const m=L.marker([bus.lat,bus.lng],{icon:busIcon(bus.familia,bus.pasajeros/bus.cap*100,bus.incidente)});
+    m.on('click',()=>showBusInfo(bus,m));
+    if(layers.buses) m.addTo(map);
+    bus.marker=m;
+    busMarkers[bus.id]=m;
+  });
+}
+
+function shouldShowBus(bus){
+  if(!activeFamily) return true;
+  return bus.familia===activeFamily;
+}
+
+function showBusInfo(bus,marker){
+  const pct=(bus.pasajeros/bus.cap*100).toFixed(1);
+  const ics=Math.max(0,1-Math.abs(bus.tReal-bus.tEst)/bus.tEst).toFixed(2);
+  const info=RUTAS_REALES[bus.ruta];
+  const barColor=pct>90?"#ff3d57":pct>75?"#ffb300":"#00e676";
+  marker.bindPopup(`<div style="font-family:'IBM Plex Mono',monospace;background:#0d1421;color:#e8f0fe;padding:.85rem;border-radius:10px;min-width:220px;font-size:.72rem;line-height:1.6"><div style="display:flex;justify-content:space-between;margin-bottom:.5rem"><span style="color:${famColor[bus.familia]};font-weight:600;font-size:.8rem">${bus.ruta}</span><span style="background:${bus.incidente?'#3d0010':'#003520'};color:${bus.incidente?'#ff3d57':'#00e676'};padding:.1rem .4rem;border-radius:4px;font-size:.62rem">${bus.incidente?'⚠ INCIDENTE':'● OPERATIVO'}</span></div><div style="color:#8da4c0;font-size:.65rem;margin-bottom:.6rem">${info.nombre}</div><div style="margin-bottom:.35rem">🧑 Pasajeros: <b style="color:${barColor}">${bus.pasajeros}/${bus.cap}</b></div><div style="background:#1c2d42;border-radius:3px;height:4px;margin-bottom:.5rem"><div style="background:${barColor};width:${pct}%;height:100%;border-radius:3px;transition:width .5s"></div></div><div>🚀 Velocidad: <b>${bus.velocidad.toFixed(1)} km/h</b></div><div>⏱ T. Est.: <b>${bus.tEst.toFixed(1)} min</b></div><div>📍 T. Real: <b>${bus.tReal.toFixed(1)} min</b></div><div>📊 I.Conf.: <b style="color:${ics>.8?'#00e676':ics>.6?'#ffb300':'#ff3d57'}">${ics}</b></div><div style="margin-top:.35rem">🚏 Familia: <b style="color:${famColor[bus.familia]}">${bus.familia}</b> · Cap. <b>${bus.cap}</b></div></div>`,{className:'custom-pop'}).openPopup();
+}
+
+function updateBuses(){
+  Object.values(BUS_FLEET).forEach(bus=>{
+    bus.lat += bus.dLat + (Math.random()-.5)*0.00015;
+    bus.lng += bus.dLng + (Math.random()-.5)*0.00015;
+    if(bus.lat>9.12||bus.lat<8.97){bus.dLat*=-1}
+    if(bus.lng>-79.39||bus.lng<-79.58){bus.dLng*=-1}
+    const delta=Math.floor((Math.random()-.4)*6);
+    bus.pasajeros=Math.max(0,Math.min(bus.cap,bus.pasajeros+delta));
+    bus.velocidad=Math.max(5,Math.min(70,bus.velocidad+(Math.random()-.5)*8));
+    bus.densidad=Math.max(0,Math.min(1,bus.densidad+(Math.random()-.5)*.1));
+    bus.tReal=bus.tEst*(1+(Math.random()-.35)*.5);
+    if(Math.random()<0.003) bus.incidente=true;
+    if(Math.random()<0.02 && bus.incidente) bus.incidente=false;
+
+    if(!bus.marker) return;
+    const show=layers.buses&&shouldShowBus(bus);
+    if(show){
+      if(!map.hasLayer(bus.marker)) bus.marker.addTo(map);
+      bus.marker.setLatLng([bus.lat,bus.lng]);
+      bus.marker.setIcon(busIcon(bus.familia,bus.pasajeros/bus.cap*100,bus.incidente));
+    }else if(map.hasLayer(bus.marker)){
+      map.removeLayer(bus.marker);
+    }
+  });
+}
+
+function buildRouteList(){
+  const el=document.getElementById('route-list');
+  el.innerHTML='';
+  Object.entries(RUTAS_REALES).forEach(([codigo,info])=>{
+    const buses=Object.values(BUS_FLEET).filter(b=>b.ruta===codigo);
+    const avgOcu=buses.length?buses.reduce((s,b)=>s+b.pasajeros/b.cap,0)/buses.length:0;
+    const dotClass=avgOcu>.9?'dot-red':avgOcu>.75?'dot-yellow':'dot-green';
+    const div=document.createElement('div');
+    div.className='route-item';
+    div.innerHTML=`<div class="ri-badge fam-${info.familia}">${codigo}</div><div class="ri-name">${info.nombre.length>32?info.nombre.slice(0,32)+'…':info.nombre}</div><div class="ri-dot ${dotClass}"></div>`;
+    div.onclick=()=>focusRoute(codigo);
+    el.appendChild(div);
+  });
+}
+
+function focusRoute(codigo){
+  document.querySelectorAll('.route-item').forEach(el=>{el.classList.toggle('active',el.querySelector('.ri-badge').textContent===codigo);});
+  const buses=Object.values(BUS_FLEET).filter(b=>b.ruta===codigo);
+  if(buses.length){const b=buses[0];map.flyTo([b.lat,b.lng],14);}
+  activeFamily=null;
+}
+
+function updateMetrics(){
+  const buses=Object.values(BUS_FLEET);
+  const totalPax=buses.reduce((s,b)=>s+b.pasajeros,0);
+  const avgDens=buses.reduce((s,b)=>s+b.densidad,0)/buses.length;
+  const incidentes=buses.filter(b=>b.incidente).length;
+  const avgOcu=buses.reduce((s,b)=>s+b.pasajeros/b.cap,0)/buses.length;
+  const avgConf=buses.reduce((s,b)=>{const i=Math.max(0,1-Math.abs(b.tReal-b.tEst)/b.tEst);return s+i;},0)/buses.length;
+
+  document.getElementById('hk-buses').textContent=buses.length;
+  document.getElementById('hk-pasajeros').textContent=totalPax.toLocaleString();
+  document.getElementById('hk-trafico').textContent=avgDens>.75?'ALTO':avgDens>.45?'MODERADO':'FLUIDO';
+  document.getElementById('hk-alertas').textContent=incidentes;
+  document.getElementById('hk-confiab').textContent=(avgConf*100).toFixed(0)+'%';
+
+  const normales=buses.filter(b=>b.pasajeros/b.cap<.8&&!b.incidente).length;
+  const retrasos=buses.filter(b=>Math.abs(b.tReal-b.tEst)>5).length;
+  const criticos=buses.filter(b=>b.incidente||b.pasajeros/b.cap>.95).length;
+  document.getElementById('sc-normales').textContent=normales;
+  document.getElementById('sc-retrasos').textContent=retrasos;
+  document.getElementById('sc-criticos').textContent=criticos;
+}
+
+function updatePredList(){buildPredList()}
+function buildPredList(){
+  const el=document.getElementById('pred-list');
+  const rutasSel=Object.keys(RUTAS_REALES).slice(0,8);
+  el.innerHTML='';
+  rutasSel.forEach(codigo=>{
+    const info=RUTAS_REALES[codigo];
+    const buses=Object.values(BUS_FLEET).filter(b=>b.ruta===codigo);
+    if(!buses.length) return;
+    const avgPax=buses.reduce((s,b)=>s+b.pasajeros,0)/buses.length;
+    const pct=avgPax/info.cap*100;
+    const avgConf=buses.reduce((s,b)=>s+Math.max(0,1-Math.abs(b.tReal-b.tEst)/b.tEst),0)/buses.length;
+    const avgEta=buses.reduce((s,b)=>s+b.tReal,0)/buses.length;
+    const estado=pct>90||avgConf<.6?'crit':pct>75||avgConf<.8?'warn':'ok';
+    const estadoLabel={ok:'NORMAL',warn:'RETRASO',crit:'CRÍTICO'}[estado];
+    const barColor={ok:'#00e676',warn:'#ffb300',crit:'#ff3d57'}[estado];
+    el.innerHTML+=`<div class="pred-section"><div class="pred-card"><div class="pc-header"><div><div class="pc-ruta" style="color:${famColor[info.familia]}">${codigo}</div><div class="pc-nombre">${info.nombre.slice(0,40)}${info.nombre.length>40?'…':''}</div></div><div class="pc-badge badge-${estado}">${estadoLabel}</div></div><div class="pc-metrics"><div class="pc-m"><div class="pc-m-val" style="color:${barColor}">${pct.toFixed(0)}%</div><div class="pc-m-lab">Ocupación</div></div><div class="pc-m"><div class="pc-m-val">${avgEta.toFixed(1)}'</div><div class="pc-m-lab">ETA (min)</div></div><div class="pc-m"><div class="pc-m-val" style="color:${avgConf>.8?'#00e676':avgConf>.6?'#ffb300':'#ff3d57'}">${(avgConf*100).toFixed(0)}%</div><div class="pc-m-lab">Confiab.</div></div><div class="pc-m"><div class="pc-m-val">${info.cap}</div><div class="pc-m-lab">Cap. bus</div></div></div><div class="progress-bar"><div class="progress-fill" style="width:${Math.min(100,pct)}%;background:${barColor}"></div></div></div></div>`;
+  });
+}
+
+const CODIGOS_ACCION=[
+  {cod:"CAP-001",desc:"Enviar bus adicional",prio:"critica",cond:b=>b.pasajeros/b.cap>.95},
+  {cod:"PUN-001",desc:"Reasignar ruta",prio:"critica",cond:b=>Math.abs(b.tReal-b.tEst)>10},
+  {cod:"DEM-001",desc:"Aumentar frecuencia",prio:"critica",cond:b=>b.pasajeros/b.cap>.90},
+  {cod:"INC-001",desc:"Protocolo incidente",prio:"critica",cond:b=>b.incidente},
+  {cod:"TRA-001",desc:"Ruta alternativa",prio:"alta",cond:b=>b.densidad>.85},
+  {cod:"PUN-003",desc:"Optimizar paradas",prio:"alta",cond:b=>Math.abs(b.tReal-b.tEst)>5},
+  {cod:"DEM-002",desc:"Ajustar frecuencia",prio:"alta",cond:b=>b.pasajeros/b.cap>.78},
+  {cod:"TRA-002",desc:"Actualizar ETA",prio:"media",cond:b=>b.densidad>.65},
+  {cod:"MON-001",desc:"Monitoreo puntualidad",prio:"media",cond:b=>Math.abs(b.tReal-b.tEst)>3},
+  {cod:"SIS-000",desc:"Sistema operando normal",prio:"baja",cond:()=>true},
+];
+
+function buildActionList(){
+  const el=document.getElementById('action-list');
+  const buses=Object.values(BUS_FLEET);
+  const activas=[];
+  CODIGOS_ACCION.forEach(ac=>{
+    const afectados=buses.filter(ac.cond);
+    if(afectados.length){
+      activas.push({...ac,ruta:afectados[0].ruta,n:afectados.length});
+    }
+  });
+  const priorOrd=["critica","alta","media","baja"];
+  activas.sort((a,b)=>priorOrd.indexOf(a.prio)-priorOrd.indexOf(b.prio));
+  el.innerHTML=activas.slice(0,7).map(a=>`<div class="action-item"><div class="ai-prio prio-${a.prio}">${a.prio.toUpperCase()}</div><div class="ai-body"><div class="ai-code">${a.cod} · ${a.ruta} (${a.n} bus${a.n>1?'es':''})</div><div class="ai-desc">${a.desc}</div></div></div>`).join('');
+}
+
+function updateInsight(){
+  const buses=Object.values(BUS_FLEET);
+  const incidentes=buses.filter(b=>b.incidente).length;
+  const saturados=buses.filter(b=>b.pasajeros/b.cap>.9).length;
+  const demorados=buses.filter(b=>Math.abs(b.tReal-b.tEst)>7).length;
+  const avgConf=buses.reduce((s,b)=>s+Math.max(0,1-Math.abs(b.tReal-b.tEst)/b.tEst),0)/buses.length;
+  const msgs=[incidentes>2?`⚠️ ${incidentes} incidentes activos. Activar protocolos de contingencia en corredores afectados.`:null,saturados>3?`📈 ${saturados} buses al límite de capacidad. Reforzar familia S y C con unidades adicionales.`:null,demorados>4?`⏱ ${demorados} rutas con retrasos >7 min. Corredor Sur muestra mayor congestión.`:null,avgConf>.85?`✅ Confiabilidad del sistema: ${(avgConf*100).toFixed(0)}%. Operación dentro de parámetros normales.`:null,`🚍 ${buses.length} unidades activas — ${Object.keys(RUTAS_REALES).length} rutas MiBus monitoreadas en tiempo real.`].filter(Boolean);
+  document.getElementById('ai-insight').textContent=msgs[Math.floor(Math.random()*msgs.length)];
+}
+
+const ALERTAS_POOL=[
+  {type:'crit',msg:b=>`🚨 BUS LLENO — ${b.ruta}: ${b.pasajeros}/${b.cap} pasajeros`,cond:b=>b.pasajeros/b.cap>.95},
+  {type:'crit',msg:b=>`🚨 INCIDENTE: ${b.tipoInc} en ruta ${b.ruta}`,cond:b=>b.incidente},
+  {type:'warn',msg:b=>`⚠️ RETRASO ${b.ruta}: +${(b.tReal-b.tEst).toFixed(1)} min`,cond:b=>b.tReal-b.tEst>7},
+  {type:'warn',msg:b=>`⚠️ CONGESTIÓN en corredor de ${b.ruta} — ${(b.densidad*100).toFixed(0)}%`,cond:b=>b.densidad>.82},
+  {type:'info',msg:b=>`ℹ️ Bus ${b.ruta} ajustando frecuencia`,cond:b=>b.pasajeros/b.cap>.75},
+  {type:'ok',msg:b=>`✅ Ruta ${b.ruta} operando con normalidad`,cond:b=>b.pasajeros/b.cap<.5&&!b.incidente},
+];
+let alertCount=0;
+function generateAlert(){
+  const buses=Object.values(BUS_FLEET);
+  const bus=buses[Math.floor(Math.random()*buses.length)];
+  const pool=ALERTAS_POOL.filter(a=>a.cond(bus));
+  if(!pool.length) return;
+  const a=pool[Math.floor(Math.random()*pool.length)];
+  addAlert(a.type,a.msg(bus));
+  alertCount++;
+  document.getElementById('hk-alertas').textContent=alertCount;
+}
+
+function addAlert(type,msg){
+  const feed=document.getElementById('alert-feed');
+  const el=document.createElement('div');
+  el.className=`alert-item alert-${type}`;
+  const now=new Date();
+  el.innerHTML=`${msg}<span class="alert-time">${now.toLocaleTimeString('es-PA')}</span>`;
+  feed.insertBefore(el,feed.firstChild);
+  while(feed.children.length>18) feed.removeChild(feed.lastChild);
+}
+
+function toggleLayer(layer){
+  layers[layer]=!layers[layer];
+  document.getElementById(`chip-${layer}`).classList.toggle('active',layers[layer]);
+  if(layer==='rutas') polylines.forEach(p=>layers.rutas?p.addTo(map):p.remove());
+  if(layer==='trafico') trafficCircles.forEach(({circle})=>layers.trafico?circle.addTo(map):circle.remove());
+  if(layer==='paradas') Object.values(paraMarkers).forEach(m=>layers.paradas?m.addTo(map):m.remove());
+  if(layer==='buses') Object.values(busMarkers).forEach(m=>layers.buses?m.addTo(map):m.remove());
+}
+
+function filterFamily(fam){
+  activeFamily=fam;
+  document.querySelectorAll('#mo-bl .chip').forEach((c,i)=>{const fams=[...'ECSTM',null];c.classList.toggle('active',fams[i]===fam);});
+  Object.values(BUS_FLEET).forEach(bus=>{if(!bus.marker) return;const show=layers.buses&&(!fam||bus.familia===fam);if(show) bus.marker.addTo(map); else bus.marker.remove();});
+}
+
+function updateClock(){
+  document.getElementById('clock').textContent=new Date().toLocaleTimeString('es-PA',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+
+// Iniciar
+window.onload = () => {
+  populateSelectors();
+};
+</script>
+</body>
+</html>
